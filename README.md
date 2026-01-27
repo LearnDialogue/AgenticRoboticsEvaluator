@@ -12,11 +12,7 @@ git clone <repo-url>
 cd AgenticRoboticsEvaluator/infra
 docker compose up --build
 
-# In a new terminal - create admin user
-cd AgenticRoboticsEvaluator/infra
-docker compose exec backend python seed_admin.py admin admin123
-
-# Open the app
+# Open the app (admin user is auto-created on first run)
 open http://localhost:3000
 ```
 
@@ -137,20 +133,45 @@ This repository contains the **D1 Foundation** - a fully functional skeleton app
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Frontend** | Next.js 14 | React framework with App Router |
-| | TypeScript | Type safety |
-| | Tailwind CSS | Styling |
-| | Axios | HTTP client |
-| **Backend** | FastAPI | Async Python web framework |
-| | SQLAlchemy 2.0 | ORM with async support |
-| | Alembic | Database migrations |
-| | Pydantic | Request/response validation |
-| | python-jose | JWT token handling |
-| | bcrypt | Password hashing |
-| **Database** | PostgreSQL 15 | Primary data store |
-| **Infrastructure** | Docker Compose | Container orchestration |
+### Why These Technologies?
+
+| Layer | Technology | Purpose | Why We Chose It |
+|-------|------------|---------|-----------------|
+| **Frontend** | Next.js 14 | React framework with App Router | Server-side rendering, built-in routing, great DX |
+| | TypeScript | Type safety | Catch errors at compile-time, better autocomplete |
+| | Tailwind CSS | Utility-first styling | Rapid UI development, consistent design |
+| | Axios | HTTP client | Simple API calls with interceptors for auth |
+| **Backend** | FastAPI | Async Python web framework | Fast, automatic API docs, modern Python async/await |
+| | SQLAlchemy 2.0 | ORM (Object-Relational Mapper) | Write Python objects instead of SQL queries, database-agnostic |
+| | Alembic | Database migrations | Version control for database schema changes |
+| | Pydantic | Request/response validation | Automatic data validation and serialization |
+| | python-jose | JWT token handling | Secure stateless authentication |
+| | bcrypt | Password hashing | Industry-standard password security |
+| **Database** | PostgreSQL 15 | Relational database | ACID compliance, JSON support, scalability |
+| **Infrastructure** | Docker Compose | Container orchestration | One-command setup, consistent environments |
+
+### Key Architecture Decisions
+
+**SQLAlchemy (ORM)**
+- **What:** Translates Python objects to database tables
+- **Why:** Instead of writing raw SQL, you work with Python classes
+- **Example:** `db.query(Student).filter(Student.username == "admin")` vs `SELECT * FROM students WHERE username = 'admin'`
+- **Benefit:** Type-safe, IDE autocomplete, database-agnostic (switch from PostgreSQL to MySQL without code changes)
+
+**FastAPI**
+- **What:** Modern async Python web framework
+- **Why:** Built-in data validation (Pydantic), auto-generated API docs, excellent async support
+- **Benefit:** Automatic `/docs` endpoint with interactive API testing
+
+**JWT Authentication**
+- **What:** JSON Web Tokens for stateless auth
+- **Why:** No server-side session storage needed, works great for APIs
+- **How:** User logs in → receives token → includes token in every request
+
+**Docker Compose**
+- **What:** Multi-container orchestration
+- **Why:** Ensures everyone runs the same PostgreSQL version, Python version, Node version
+- **Benefit:** `docker compose up` works identically on Mac, Windows, Linux
 
 ---
 
@@ -171,11 +192,7 @@ cd AgenticRoboticsEvaluator
 cd infra
 docker compose up --build
 
-# 3. In a new terminal, create an admin user
-cd infra
-docker compose exec backend python seed_admin.py admin admin123
-
-# 4. Open the application
+# 3. Open the application (admin user created automatically on first run)
 open http://localhost:3000
 ```
 
