@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
     
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    
+    # LLM Behaviour
+    LLM_MAX_RETRIES: int = 2          # retry on bad JSON
+    LLM_STAGE_MAX_TURNS: int = 5      # safety-valve: force-advance after N turns
+    
     # App Settings
     DEBUG: bool = False
     
