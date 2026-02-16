@@ -166,15 +166,15 @@ class AnthropicClient:    # ← implement later, same interface
 
 ---
 
-## Step 4 — Database: Add `metadata` Column ⬜
+## Step 4 — Database: Add `llm_metadata` Column ✅
 
 > Store `routing_signal` and `reflection_data` alongside each message for research auditability.
 
 | # | Task | File(s) | Status |
 |---|------|---------|--------|
-| 4.1 | Add `metadata` column (JSONB, nullable) to `Message` model | `backend/app/models/message.py` | ⬜ |
-| 4.2 | Create Alembic migration `002_add_message_metadata` | `backend/alembic/versions/002_*.py` | ⬜ |
-| 4.3 | Run migration, verify column exists | — | ⬜ |
+| 4.1 | Add `llm_metadata` column (JSONB, nullable) to `Message` model | `backend/app/models/message.py` | ✅ |
+| 4.2 | Create Alembic migration `002_add_message_metadata` | `backend/alembic/versions/002_*.py` | ✅ |
+| 4.3 | Run migration, verify column exists | — | ✅ |
 
 ### What goes in `metadata`
 

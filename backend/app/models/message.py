@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, String, Text, DateTime, Enum, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -30,6 +30,7 @@ class Message(Base):
     role = Column(Enum(MessageRole), nullable=False)
     content = Column(Text, nullable=False)
     stage_id = Column(String(50), nullable=False)
+    llm_metadata = Column("llm_metadata", JSONB, nullable=True)  # routing_signal, reflection_data, model info
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Relationships
