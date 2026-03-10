@@ -315,15 +315,74 @@ You MUST respond with ONLY a JSON object in this exact format:
     "summary": "<1-2 sentence description of how engagement changed across the session>",
     "trajectory": "<rising, falling, steady, or mixed>"
   },
+  "cps_complaint_analysis": {
+    "complaints_found": <true or false>,
+    "complaints": [
+      {
+        "complaint_text": "<exact or close paraphrase of what the student said>",
+        "facet": "<Constructing shared knowledge | Negotiation/Coordination | Maintaining team function>",
+        "sub_facet": "<the relevant sub-facet>",
+        "indicator": "<the matching indicator from the framework>",
+        "valence": "<positive or negative — negative means the indicator is reverse-coded, i.e. the student is describing a breakdown>"
+      }
+    ],
+    "cps_summary": "<1-2 sentence summary of the team dynamics issues the student raised, or 'No CPS-related complaints were raised in this session.' if none>"
+  },
   "recommendations": {
     "for_next_session": ["<what to do differently or follow up on>"],
-    "for_prompt_tuning": ["<specific prompt changes that could improve the experience>"],
+    "for_prompt_tuning": ["<prompt changes that could improve the experience>"],
     "for_system_design": ["<any structural/flow improvements worth considering>"]
   }
 }
 
+CPS Complaint Classification Framework (use this to populate "cps_complaint_analysis"):
+
+The framework has 3 facets, each with sub-facets and indicators:
+
+1. Constructing shared knowledge
+   Sub-facet: Shares understanding of problems and solutions
+     Indicators:
+     - Talks about ideas or topics related to solving the problem (positive)
+     - Proposes a solution (positive)
+     - Talks about constraints of the task (positive)
+     - Builds on the ideas of another team member (positive)
+   Sub-facet: Establishes common ground
+     Indicators:
+     - Confirms understanding by asking questions or paraphrasing (positive)
+     - Repairs misunderstandings (positive)
+     - Interrupts or talks over others (negative)
+
+2. Negotiation/Coordination
+   Sub-facet: Responds to others' questions/ideas
+     Indicators:
+     - Does not respond when spoken to by others (negative)
+     - Makes rude or critical comments to others (negative)
+     - Provides reasons to support or refute a potential solution (positive)
+   Sub-facet: Monitors execution
+     Indicators:
+     - Makes an attempt to solve the problem after discussion (positive)
+     - Talks about the results of an attempted solution (positive)
+     - Brings up giving up on solving the problem (negative)
+
+3. Maintaining team function
+   Sub-facet: Fulfills individual roles on the team
+     Indicators:
+     - Is not focused on solving the task (negative)
+     - Initiates or joins off-topic conversation (negative)
+   Sub-facet: Takes initiatives to advance collaboration
+     Indicators:
+     - Asks if others have suggestions (positive)
+     - Offers help or takes initiative (positive)
+     - Compliments or encourages others (positive)
+
+For each complaint or team-related observation the student makes, find the best \
+matching facet/sub-facet/indicator and record it. A single complaint can map to \
+multiple indicators if it touches on several issues. If the student made no \
+complaints about teamwork or collaboration, set "complaints_found" to false and \
+use an empty list for "complaints".
+
 Rules:
-- Be specific. Reference actual moments from the conversation.
+- Reference actual moments from the conversation.
 - "overall_score": 1=poor, 2=below average, 3=adequate, 4=good, 5=excellent.
 - "student_profile" is critical — this is what we remember for future sessions. \
 Extract EVERY personal detail the student shared, no matter how small. Their name, \
