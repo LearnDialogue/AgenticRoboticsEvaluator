@@ -83,6 +83,7 @@ export default function MessageCard({
                 {new Date(message.created_at).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
+                  timeZone: "America/New_York",
                 })}
               </span>
               {hasMetadata && mode === "compact" && !expanded && (

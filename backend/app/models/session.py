@@ -3,7 +3,7 @@ Session model - represents a reflection session.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, String, DateTime, Enum, ForeignKey
@@ -32,7 +32,7 @@ class Session(Base):
     current_stage = Column(String(50), nullable=False, default="RECALL_EVENT")
     prompt_version = Column(String(20), nullable=False, default="v1")
     model_name = Column(String(100), nullable=False, default="placeholder")
-    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     evaluation_data = Column(JSONB, nullable=True)
 

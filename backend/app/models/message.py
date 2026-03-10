@@ -3,7 +3,7 @@ Message model - represents chat messages in a session.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 from sqlalchemy import Column, String, Text, DateTime, Enum, ForeignKey
@@ -31,7 +31,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     stage_id = Column(String(50), nullable=False)
     llm_metadata = Column("llm_metadata", JSONB, nullable=True)  # routing_signal, reflection_data, model info
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     session = relationship("Session", back_populates="messages")

@@ -46,6 +46,7 @@ function InlineEvaluation({ data }: { data: Record<string, unknown> }) {
   const engagement = data.engagement_arc as Record<string, unknown> | undefined;
   const recs = data.recommendations as Record<string, unknown> | undefined;
   const evalMeta = data._eval_metadata as Record<string, unknown> | undefined;
+  const cps = data.cps_complaint_analysis as Record<string, unknown> | undefined;
 
   const score = quality?.overall_score as number | undefined;
 
@@ -182,6 +183,50 @@ function InlineEvaluation({ data }: { data: Record<string, unknown> }) {
             </div>
           )}
         </div>
+
+        {/* CPS Complaint Analysis */}
+        {cps && (
+          <div className="p-3 bg-white rounded-lg border border-gray-100">
+            <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">CPS Complaint Analysis</h4>
+            {cps.complaints_found ? (
+              <>
+                <p className="text-xs text-gray-600 mb-2">{String(cps.cps_summary)}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border border-gray-200 rounded">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-[10px] uppercase tracking-wide text-gray-500">
+                        <th className="px-2 py-1.5 border-b border-gray-200">Complaint</th>
+                        <th className="px-2 py-1.5 border-b border-gray-200">Facet</th>
+                        <th className="px-2 py-1.5 border-b border-gray-200">Sub-facet</th>
+                        <th className="px-2 py-1.5 border-b border-gray-200">Indicator</th>
+                        <th className="px-2 py-1.5 border-b border-gray-200">Valence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(cps.complaints as Array<Record<string, string>>).map((c, i) => (
+                        <tr key={i} className="border-b border-gray-100 last:border-b-0">
+                          <td className="px-2 py-1.5 text-gray-700 italic">&ldquo;{c.complaint_text}&rdquo;</td>
+                          <td className="px-2 py-1.5 text-gray-700">{c.facet}</td>
+                          <td className="px-2 py-1.5 text-gray-700">{c.sub_facet}</td>
+                          <td className="px-2 py-1.5 text-gray-700">{c.indicator}</td>
+                          <td className="px-2 py-1.5">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              c.valence === "positive" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                            }`}>
+                              {c.valence}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">No CPS-related complaints were raised in this session.</p>
+            )}
+          </div>
+        )}
 
         {/* Recommendations */}
         {recs && (
@@ -433,7 +478,7 @@ export default function DashboardPage() {
                     {s.status === "ACTIVE" ? "Active" : "Done"}
                   </span>
                   <span className="text-[10px] text-gray-400">
-                    {new Date(s.started_at).toLocaleDateString()}
+                    {new Date(s.started_at).toLocaleDateString([], { timeZone: "America/New_York" })}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1 truncate">

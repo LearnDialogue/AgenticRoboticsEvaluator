@@ -68,6 +68,7 @@ function SessionEvaluationPanel({ data }: { data: Record<string, unknown> }) {
   const engagement = data.engagement_arc as Record<string, unknown> | undefined;
   const recs = data.recommendations as Record<string, unknown> | undefined;
   const evalMeta = data._eval_metadata as Record<string, unknown> | undefined;
+  const cps = data.cps_complaint_analysis as Record<string, unknown> | undefined;
 
   const score = quality?.overall_score as number | undefined;
 
@@ -213,6 +214,52 @@ function SessionEvaluationPanel({ data }: { data: Record<string, unknown> }) {
           </div>
         )}
       </div>
+
+      {/* CPS Complaint Analysis */}
+      {cps && (
+        <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+          <h3 className="text-xs font-semibold text-gray-700 border-b border-gray-100 pb-1">
+            CPS Complaint Analysis
+          </h3>
+          {cps.complaints_found ? (
+            <>
+              <p className="text-sm text-gray-600">{String(cps.cps_summary)}</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border border-gray-200 rounded-lg">
+                  <thead>
+                    <tr className="bg-gray-50 text-left text-[10px] uppercase tracking-wide text-gray-500">
+                      <th className="px-3 py-2 border-b border-gray-200">Complaint</th>
+                      <th className="px-3 py-2 border-b border-gray-200">Facet</th>
+                      <th className="px-3 py-2 border-b border-gray-200">Sub-facet</th>
+                      <th className="px-3 py-2 border-b border-gray-200">Indicator</th>
+                      <th className="px-3 py-2 border-b border-gray-200">Valence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(cps.complaints as Array<Record<string, string>>).map((c, i) => (
+                      <tr key={i} className="border-b border-gray-100 last:border-b-0">
+                        <td className="px-3 py-2 text-gray-700 italic">&ldquo;{c.complaint_text}&rdquo;</td>
+                        <td className="px-3 py-2 text-gray-700">{c.facet}</td>
+                        <td className="px-3 py-2 text-gray-700">{c.sub_facet}</td>
+                        <td className="px-3 py-2 text-gray-700">{c.indicator}</td>
+                        <td className="px-3 py-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            c.valence === "positive" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          }`}>
+                            {c.valence}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-500">No CPS-related complaints were raised in this session.</p>
+          )}
+        </div>
+      )}
 
       {/* Recommendations */}
       {recs && (
@@ -516,14 +563,14 @@ export default function InspectPage() {
             <div>
               <p className="text-gray-400 text-xs">Started</p>
               <p className="text-gray-700">
-                {new Date(session.started_at).toLocaleString()}
+                {new Date(session.started_at).toLocaleString([], { timeZone: "America/New_York" })}
               </p>
             </div>
             <div>
               <p className="text-gray-400 text-xs">Completed</p>
               <p className="text-gray-700">
                 {session.completed_at
-                  ? new Date(session.completed_at).toLocaleString()
+                  ? new Date(session.completed_at).toLocaleString([], { timeZone: "America/New_York" })
                   : "---"}
               </p>
             </div>

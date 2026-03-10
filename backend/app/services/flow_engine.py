@@ -103,7 +103,7 @@ class FlowEngine:
             "stage_completed": llm_response.stage_completed,
             "reflection_data": llm_response.reflection_data,
             "model": settings.OPENAI_MODEL,
-            "prompt_version": "v1",
+            "prompt_version": "v2",
             "forced_advance": forced_advance,
             "response_time_ms": llm_result.response_time_ms,
             "token_usage": llm_result.token_usage,

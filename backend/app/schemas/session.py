@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.models.session import SessionStatus
 
@@ -29,6 +29,13 @@ class SessionRead(BaseModel):
     evaluation_data: Optional[dict] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("started_at", "completed_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure UTC timestamps include Z suffix for JS parsing."""
+        if value is None:
+            return None
+        return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class SessionList(BaseModel):

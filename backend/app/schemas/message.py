@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.models.message import MessageRole
 
@@ -30,6 +30,11 @@ class MessageRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure UTC timestamps include Z suffix for JS parsing."""
+        return value.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 class ChatRequest(BaseModel):
