@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { sessionsApi, stagesApi } from "@/lib/api";
+import { adminApi, stagesApi } from "@/lib/api";
 import MessageCard from "@/components/MessageCard";
 import StageProgressBar from "@/components/StageProgressBar";
 
@@ -410,10 +410,11 @@ export default function InspectPage() {
 
   useEffect(() => {
     if (!authLoading && !user) router.push("/login");
+    if (!authLoading && user?.role !== "admin") router.replace("/dashboard");
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user && sessionId) {
+    if (user?.role === "admin" && sessionId) {
       loadData();
     }
   }, [user, sessionId]);
@@ -422,8 +423,8 @@ export default function InspectPage() {
     setIsLoading(true);
     try {
       const [sessionData, messagesData, stagesData] = await Promise.all([
-        sessionsApi.get(sessionId),
-        sessionsApi.getMessages(sessionId),
+        adminApi.getSession(sessionId),
+        adminApi.getSessionMessages(sessionId),
         stagesApi.get(),
       ]);
       setSession(sessionData);

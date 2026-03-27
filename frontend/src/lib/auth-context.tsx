@@ -13,6 +13,15 @@ interface User {
   tone_pref: string | null;
 }
 
+interface RawUser {
+  id: number;
+  username: string;
+  role: string;
+  display_name: string | null;
+  pronouns: string | null;
+  tone_pref: string | null;
+}
+
 // Auth context type
 interface AuthContextType {
   user: User | null;
@@ -23,6 +32,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function normalizeUser(rawUser: RawUser): User {
+  return {
+    ...rawUser,
+    role: rawUser.role.toLowerCase() === "admin" ? "admin" : "student",
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -45,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        setUser(normalizeUser(JSON.parse(storedUser) as RawUser));
       }
     } catch (error) {
       console.error("Error loading auth from storage:", error);
@@ -63,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(access_token);
 
     // Fetch user info
-    const userData = await authApi.me();
+    const userData = normalizeUser(await authApi.me());
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
   };

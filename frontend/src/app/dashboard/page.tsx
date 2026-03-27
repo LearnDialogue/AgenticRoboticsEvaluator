@@ -482,7 +482,13 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1 truncate">
-                  Stage: {s.current_stage.replace(/_/g, " ")}
+                  {isAdmin
+                    ? `Stage: ${s.current_stage.replace(/_/g, " ")}`
+                    : `Started ${new Date(s.started_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "America/New_York",
+                      })}`}
                 </p>
               </button>
             ))
@@ -526,7 +532,7 @@ export default function DashboardPage() {
                 <h1 className="text-base font-semibold text-gray-900">
                   Reflection Session
                 </h1>
-                {selectedSession && (
+                {selectedSession && isAdmin && (
                   <div className="mt-1">
                     <StageProgressBar
                       currentStage={selectedSession.current_stage}
@@ -538,6 +544,7 @@ export default function DashboardPage() {
                 )}
               </div>
               {selectedSession && (
+                isAdmin && (
                 <button
                   onClick={() =>
                     router.push(`/dashboard/${selectedSession.id}/inspect`)
@@ -546,6 +553,7 @@ export default function DashboardPage() {
                 >
                   Inspect Full Session Details
                 </button>
+                )
               )}
             </div>
           </div>
@@ -576,7 +584,8 @@ export default function DashboardPage() {
               message={msg}
               stageInfo={stages[msg.stage_id] || null}
               mode="compact"
-              showStageBadge
+              showStageBadge={isAdmin}
+              showMetadata={isAdmin}
               prevStageId={idx > 0 ? messages[idx - 1].stage_id : undefined}
             />
           ))}

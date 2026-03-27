@@ -28,6 +28,7 @@ interface MessageCardProps {
   mode: "compact" | "full";
   showStageBadge?: boolean;
   prevStageId?: string;
+  showMetadata?: boolean;
 }
 
 export default function MessageCard({
@@ -36,11 +37,12 @@ export default function MessageCard({
   mode,
   showStageBadge = false,
   prevStageId,
+  showMetadata = true,
 }: MessageCardProps) {
   const [expanded, setExpanded] = useState(mode === "full");
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
-  const hasMetadata = isAssistant && message.llm_metadata;
+  const hasMetadata = showMetadata && isAssistant && message.llm_metadata;
   const stageChanged = prevStageId !== undefined && prevStageId !== message.stage_id;
 
   return (
