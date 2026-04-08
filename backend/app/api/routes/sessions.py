@@ -35,7 +35,7 @@ def create_session(
         status=SessionStatus.ACTIVE,
         current_stage="greeting",
         prompt_version="v1.0",
-        model_name=settings.OPENAI_MODEL,
+        model_name=settings.LLM_MODEL,
     )
     db.add(session)
     db.commit()
