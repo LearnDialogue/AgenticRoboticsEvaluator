@@ -1,15 +1,40 @@
 """Authentication routes."""
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy.orm import Session
 
 from app.api.deps import DBSession, CurrentUser
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, get_password_hash
 from app.models.student import Student
-from app.schemas.auth import LoginRequest, Token
+from app.models.student import UserRole
+from app.schemas.auth import LoginRequest, RegisterRequest, Token
 from app.schemas.student import StudentRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/register", response_model=StudentRead, status_code=status.HTTP_201_CREATED)
+def register(request: RegisterRequest, db: DBSession) -> Student:
+    """
+    Register a new student account.
+    """
+    existing = db.query(Student).filter(Student.username == request.username).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists",
+        )
+
+    student = Student(
+        username=request.username,
+        password_hash=get_password_hash(request.password),
+        role=UserRole.STUDENT,
+        display_name=request.display_name,
+    )
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+
+    return student
 
 
 @router.post("/login", response_model=Token)

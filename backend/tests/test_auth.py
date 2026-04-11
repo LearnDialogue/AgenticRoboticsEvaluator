@@ -2,11 +2,59 @@
 Tests for authentication endpoints.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.student import Student
+from app.models.student import UserRole
+
+
+class TestRegister:
+    """Tests for POST /auth/register."""
+
+    def test_register_student_success(
+        self,
+        client: TestClient,
+        db: Session,
+    ):
+        """Test a new student can register."""
+        response = client.post(
+            "/auth/register",
+            json={
+                "username": "newstudent",
+                "password": "strongpass123",
+                "display_name": "New Student",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["username"] == "newstudent"
+        assert data["role"] == "student"
+        assert data["display_name"] == "New Student"
+        assert "password_hash" not in data
+
+        created = db.query(Student).filter(Student.username == "newstudent").first()
+        assert created is not None
+        assert created.role == UserRole.STUDENT
+        assert created.password_hash != "strongpass123"
+
+    def test_register_duplicate_username_fails(
+        self,
+        client: TestClient,
+        student_user: Student,
+    ):
+        """Test registration rejects an existing username."""
+        response = client.post(
+            "/auth/register",
+            json={
+                "username": "teststudent",
+                "password": "anotherpass123",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Username already exists"
 
 
 class TestLogin:

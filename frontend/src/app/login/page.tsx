@@ -6,9 +6,11 @@ import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -18,14 +20,25 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(username, password);
+      if (mode === "register") {
+        await register({
+          username,
+          password,
+          display_name: displayName.trim() || undefined,
+        });
+      } else {
+        await login(username, password);
+      }
       router.push("/chat");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosError = err as { response?: { data?: { detail?: string } } };
-        setError(axiosError.response?.data?.detail || "Login failed");
+        setError(
+          axiosError.response?.data?.detail ||
+            (mode === "register" ? "Account creation failed" : "Login failed")
+        );
       } else {
-        setError("Login failed");
+        setError(mode === "register" ? "Account creation failed" : "Login failed");
       }
     } finally {
       setIsLoading(false);
@@ -41,8 +54,41 @@ export default function LoginPage() {
               Agentic Robotics Evaluator
             </h1>
             <p className="text-gray-600 mt-2">
-              Sign in to start your reflection session
+              {mode === "login"
+                ? "Sign in to start your reflection session"
+                : "Create a student account to start reflecting"}
             </p>
+          </div>
+
+          <div className="mb-6 grid grid-cols-2 rounded-md bg-gray-100 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
+              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                mode === "login"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setError("");
+              }}
+              className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                mode === "register"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Create Account
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -70,6 +116,25 @@ export default function LoginPage() {
               />
             </div>
 
+            {mode === "register" && (
+              <div>
+                <label
+                  htmlFor="displayName"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Display Name
+                </label>
+                <input
+                  id="displayName"
+                  type="text"
+                  value={displayName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="How should we address you?"
+                />
+              </div>
+            )}
+
             <div>
               <label
                 htmlFor="password"
@@ -93,7 +158,13 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full bg-primary-600 text-white py-2 px-4 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading
+                ? mode === "register"
+                  ? "Creating account..."
+                  : "Signing in..."
+                : mode === "register"
+                  ? "Create Account"
+                  : "Sign In"}
             </button>
           </form>
         </div>

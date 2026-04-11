@@ -22,3 +22,11 @@ class LoginRequest(BaseModel):
 
     username: str
     password: str
+
+
+class RegisterRequest(BaseModel):
+    """Public student registration request body."""
+
+    username: str
+    password: str
+    display_name: str | None = None
