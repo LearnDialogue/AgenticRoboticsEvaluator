@@ -3,9 +3,25 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { sessionsApi, stagesApi } from "@/lib/api";
+import { adminApi, sessionsApi, stagesApi } from "@/lib/api";
 import MessageCard from "@/components/MessageCard";
 import StageProgressBar from "@/components/StageProgressBar";
+import UnityAvatarPanel from "@/components/UnityAvatarPanel";
+
+function sendAvatarState(state: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendState(state);
+}
+
+function sendAvatarUserMessage(message: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendUserMessage(message);
+}
+
+function sendAvatarAssistantMessage(message: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendAssistantMessage(message);
+}
 
 interface Message {
   id: string;
@@ -24,7 +40,17 @@ interface Session {
   current_stage: string;
   started_at: string;
   completed_at: string | null;
+  prompt_version?: string;
+  model_name?: string;
   evaluation_data?: Record<string, unknown> | null;
+}
+
+interface Student {
+  id: string;
+  username: string;
+  display_name: string | null;
+  role: "student" | "admin";
+  created_at: string;
 }
 
 interface StageInfo {
@@ -34,6 +60,24 @@ interface StageInfo {
   max_turns: number;
   next_stage: string | null;
   stage_number: number;
+}
+
+type SessionStatusFilter = "ALL" | "ACTIVE" | "COMPLETED";
+
+function formatStageLabel(stageId: string) {
+  return stageId.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatStudentLabel(student?: Student | null) {
+  if (!student) return "Unknown Student";
+  return student.display_name?.trim() || student.username;
+}
+
+function getSessionScore(session: Session): number | null {
+  const quality = session.evaluation_data?.session_quality as
+    | Record<string, unknown>
+    | undefined;
+  return typeof quality?.overall_score === "number" ? (quality.overall_score as number) : null;
 }
 
 function InlineEvaluation({ data }: { data: Record<string, unknown> }) {
@@ -274,11 +318,60 @@ function InlineEvaluation({ data }: { data: Record<string, unknown> }) {
   );
 }
 
+function AdminMetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <p className="text-2xl font-semibold text-gray-900">{value}</p>
+      <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">{label}</p>
+    </div>
+  );
+}
+
+function JsonPanel({
+  title,
+  data,
+}: {
+  title: string;
+  data: unknown;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+          <p className="text-xs text-gray-500">Inspect the raw payload behind this view.</p>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
+        >
+          {open ? "Hide JSON" : "Show JSON"}
+        </button>
+      </div>
+      {open && (
+        <pre className="mt-3 max-h-80 overflow-x-auto overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isLoading: authLoading, logout } = useAuth();
 
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [stages, setStages] = useState<Record<string, StageInfo>>({});
@@ -287,6 +380,8 @@ export default function DashboardPage() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<SessionStatusFilter>("ALL");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Redirect if not authenticated
@@ -297,15 +392,16 @@ export default function DashboardPage() {
   // Load sessions and stage config on mount
   useEffect(() => {
     if (user) {
-      loadSessions();
+      loadDashboardData();
       loadStages();
     }
   }, [user]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
+    if (user?.role === "admin") return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, user?.role]);
 
   const loadStages = async () => {
     try {
@@ -316,28 +412,69 @@ export default function DashboardPage() {
     }
   };
 
-  const loadSessions = async () => {
+  const loadDashboardData = async () => {
     setIsLoadingSessions(true);
     try {
-      const { items } = await sessionsApi.list(1, 50);
-      setSessions(items);
-      // Auto-select first active session, or most recent
-      const active = items.find((s: Session) => s.status === "ACTIVE");
-      if (active) selectSession(active);
-      else if (items.length > 0) selectSession(items[0]);
+      if (user?.role === "admin") {
+        const [{ items }, studentList] = await Promise.all([
+          adminApi.listSessions(1, 200),
+          adminApi.listStudents(),
+        ]);
+        setSessions(items);
+        setStudents(studentList);
+
+        const firstStudentId = items[0]?.student_id ?? null;
+        setSelectedStudentId(firstStudentId);
+
+        const active = firstStudentId
+          ? items.find((s: Session) => s.student_id === firstStudentId && s.status === "ACTIVE")
+          : undefined;
+        if (active) await selectSession(active, true);
+        else if (firstStudentId) {
+          const firstStudentSession = items.find((s: Session) => s.student_id === firstStudentId);
+          if (firstStudentSession) await selectSession(firstStudentSession, true);
+        }
+        else {
+          setSelectedSession(null);
+          setMessages([]);
+        }
+      } else {
+        const { items } = await sessionsApi.list(1, 50);
+        setSessions(items);
+        setStudents([]);
+        setSelectedStudentId(null);
+
+        const active = items.find((s: Session) => s.status === "ACTIVE");
+        if (active) await selectSession(active, false);
+        else if (items.length > 0) await selectSession(items[0], false);
+        else {
+          setSelectedSession(null);
+          setMessages([]);
+        }
+      }
     } catch (err) {
-      console.error("Failed to load sessions:", err);
+      console.error("Failed to load dashboard data:", err);
     } finally {
       setIsLoadingSessions(false);
     }
   };
 
-  const selectSession = async (session: Session) => {
+  const selectSession = async (session: Session, adminMode = user?.role === "admin") => {
     setSelectedSession(session);
     setIsLoadingMessages(true);
     try {
-      const msgs = await sessionsApi.getMessages(session.id);
-      setMessages(msgs);
+      if (adminMode) {
+        const [sessionData, messageData] = await Promise.all([
+          adminApi.getSession(session.id),
+          adminApi.getSessionMessages(session.id),
+        ]);
+        setSelectedSession(sessionData);
+        setMessages(messageData);
+      } else {
+        const msgs = await sessionsApi.getMessages(session.id);
+        setSelectedSession(session);
+        setMessages(msgs);
+      }
     } catch (err) {
       console.error("Failed to load messages:", err);
       setMessages([]);
@@ -347,6 +484,8 @@ export default function DashboardPage() {
   };
 
   const createNewSession = async () => {
+    if (user?.role === "admin") return;
+
     try {
       const newSession = await sessionsApi.create();
       setSessions((prev) => [newSession, ...prev]);
@@ -358,12 +497,15 @@ export default function DashboardPage() {
   };
 
   const sendMessage = async (e: React.FormEvent) => {
+    if (user?.role === "admin") return;
     e.preventDefault();
     if (!input.trim() || !selectedSession || isSending) return;
 
     const content = input.trim();
     setInput("");
     setIsSending(true);
+    sendAvatarUserMessage(content);
+    sendAvatarState("thinking");
 
     try {
       const response = await sessionsApi.chat(selectedSession.id, content);
@@ -389,6 +531,8 @@ export default function DashboardPage() {
             : s
         )
       );
+      sendAvatarAssistantMessage(response.assistant_message.content);
+      sendAvatarState("listening");
       // If session just completed, re-fetch to get evaluation_data
       if (response.session_status === "COMPLETED") {
         try {
@@ -403,6 +547,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+      sendAvatarState("idle");
     } finally {
       setIsSending(false);
     }
@@ -415,6 +560,103 @@ export default function DashboardPage() {
     .forEach((m) => {
       turnCounts[m.stage_id] = (turnCounts[m.stage_id] || 0) + 1;
     });
+
+  const studentById = students.reduce<Record<string, Student>>((acc, student) => {
+    acc[student.id] = student;
+    return acc;
+  }, {});
+
+  const adminVisibleSessions = sessions.filter((session) => {
+    if (user?.role !== "admin") return true;
+    return statusFilter === "ALL" || session.status === statusFilter;
+  });
+
+  const studentSessionsMap = adminVisibleSessions.reduce<Record<string, Session[]>>((acc, session) => {
+    if (!acc[session.student_id]) acc[session.student_id] = [];
+    acc[session.student_id].push(session);
+    return acc;
+  }, {});
+
+  const filteredStudents =
+    user?.role === "admin"
+      ? students.filter((student) => {
+          const query = adminSearch.trim().toLowerCase();
+          const sessionsForStudent = studentSessionsMap[student.id] || [];
+          if (sessionsForStudent.length === 0) return false;
+          if (query.length === 0) return true;
+          return (
+            formatStudentLabel(student).toLowerCase().includes(query) ||
+            student.username.toLowerCase().includes(query) ||
+            sessionsForStudent.some((session) =>
+              formatStageLabel(session.current_stage).toLowerCase().includes(query)
+            )
+          );
+        })
+      : students;
+
+  const selectedStudent =
+    (selectedStudentId && studentById[selectedStudentId]) ||
+    (selectedSession ? studentById[selectedSession.student_id] : null);
+
+  const selectedStudentSessions =
+    user?.role === "admin" && selectedStudentId
+      ? (studentSessionsMap[selectedStudentId] || []).sort(
+          (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+        )
+      : [];
+
+  const completedSessions = sessions.filter((session) => session.status === "COMPLETED");
+  const evaluatedSessions = sessions.filter((session) => getSessionScore(session) !== null);
+  const totalStudents = new Set(sessions.map((session) => session.student_id)).size;
+  const averageScore =
+    evaluatedSessions.length > 0
+      ? (
+          evaluatedSessions.reduce(
+            (sum, session) => sum + (getSessionScore(session) || 0),
+            0
+          ) / evaluatedSessions.length
+        ).toFixed(1)
+      : "N/A";
+  const completionRate =
+    sessions.length > 0
+      ? `${Math.round((completedSessions.length / sessions.length) * 100)}%`
+      : "0%";
+  const latestStudentMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const latestSelectedStudentSession = selectedStudentSessions[0] || null;
+  const selectedStudentLatestDate = latestSelectedStudentSession
+    ? new Date(latestSelectedStudentSession.started_at).toLocaleDateString([], {
+        timeZone: "America/New_York",
+      })
+    : null;
+  const selectedSessionDate = selectedSession
+    ? new Date(selectedSession.started_at).toLocaleDateString([], {
+        timeZone: "America/New_York",
+      })
+    : null;
+
+  const handleSelectStudent = async (studentId: string) => {
+    setSelectedStudentId(studentId);
+    const sessionsForStudent = (studentSessionsMap[studentId] || []).sort(
+      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+    );
+    const active = sessionsForStudent.find((session) => session.status === "ACTIVE");
+    const nextSession = active || sessionsForStudent[0] || null;
+
+    if (nextSession) {
+      await selectSession(nextSession, true);
+    } else {
+      setSelectedSession(null);
+      setMessages([]);
+    }
+  };
+
+  const returnToStudentDirectory = () => {
+    setSelectedStudentId(null);
+    setSelectedSession(null);
+    setMessages([]);
+  };
 
   if (authLoading) {
     return (
@@ -430,6 +672,7 @@ export default function DashboardPage() {
   return (
     <main className="flex h-screen bg-gray-50">
       {/* Sidebar */}
+      {!isAdmin && (
       <aside
         className={`${
           sidebarOpen ? "w-72" : "w-0"
@@ -438,60 +681,126 @@ export default function DashboardPage() {
         {/* Sidebar header */}
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-              Sessions
-            </h2>
-            <button
-              onClick={createNewSession}
-              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors"
-            >
-              + New
-            </button>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                {isAdmin ? "Students" : "Sessions"}
+              </h2>
+              {isAdmin && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Pick a student to review their conversations and evaluation data.
+                </p>
+              )}
+            </div>
+            {!isAdmin && (
+              <button
+                onClick={createNewSession}
+                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700 transition-colors"
+              >
+                + New
+              </button>
+            )}
           </div>
+          {isAdmin && (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
+                placeholder="Search student, username, or stage"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as SessionStatusFilter)}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="ALL">All statuses</option>
+                <option value="ACTIVE">Active only</option>
+                <option value="COMPLETED">Completed only</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Session list */}
         <div className="flex-1 overflow-y-auto">
           {isLoadingSessions ? (
             <div className="p-4 text-sm text-gray-400">Loading sessions...</div>
-          ) : sessions.length === 0 ? (
+          ) : isAdmin && filteredStudents.length === 0 ? (
+            <div className="p-4 text-sm text-gray-400">
+              No students match the current filters.
+            </div>
+          ) : !isAdmin && sessions.length === 0 ? (
             <div className="p-4 text-sm text-gray-400">
               No sessions yet. Create one!
             </div>
           ) : (
-            sessions.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => selectSession(s)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                  selectedSession?.id === s.id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      s.status === "ACTIVE"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-600"
+            isAdmin
+              ? filteredStudents.map((student) => {
+                  const sessionsForStudent = (studentSessionsMap[student.id] || []).sort(
+                    (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+                  );
+                  const latestSession = sessionsForStudent[0];
+                  const activeCount = sessionsForStudent.filter((session) => session.status === "ACTIVE").length;
+                  const evaluatedCount = sessionsForStudent.filter(
+                    (session) => getSessionScore(session) !== null
+                  ).length;
+
+                  return (
+                    <button
+                      key={student.id}
+                      onClick={() => handleSelectStudent(student.id)}
+                      className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                        selectedStudentId === student.id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="truncate text-sm font-medium text-gray-900">
+                          {formatStudentLabel(student)}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {sessionsForStudent.length} convo{sessionsForStudent.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-gray-500">@{student.username}</p>
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
+                        <span>{latestSession ? formatStageLabel(latestSession.current_stage) : "No sessions"}</span>
+                        <span>{activeCount > 0 ? `${activeCount} active` : `${evaluatedCount} evaluated`}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              : sessions.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => selectSession(s)}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                      selectedSession?.id === s.id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""
                     }`}
                   >
-                    {s.status === "ACTIVE" ? "Active" : "Done"}
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    {new Date(s.started_at).toLocaleDateString([], { timeZone: "America/New_York" })}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1 truncate">
-                  {isAdmin
-                    ? `Stage: ${s.current_stage.replace(/_/g, " ")}`
-                    : `Started ${new Date(s.started_at).toLocaleTimeString([], {
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          s.status === "ACTIVE"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {s.status === "ACTIVE" ? "Active" : "Done"}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {new Date(s.started_at).toLocaleDateString([], { timeZone: "America/New_York" })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1 truncate">
+                      Started {new Date(s.started_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                         timeZone: "America/New_York",
-                      })}`}
-                </p>
-              </button>
-            ))
+                      })}
+                    </p>
+                  </button>
+                ))
           )}
         </div>
 
@@ -515,6 +824,7 @@ export default function DashboardPage() {
           </div>
         </div>
       </aside>
+      )}
 
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -522,48 +832,359 @@ export default function DashboardPage() {
         <header className="bg-white border-b border-gray-200 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="text-gray-400 hover:text-gray-600 p-1"
-              >
-                {sidebarOpen ? "\u2039" : "\u203A"}
-              </button>
+              {!isAdmin && (
+                <button
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                >
+                  {sidebarOpen ? "\u2039" : "\u203A"}
+                </button>
+              )}
+              {isAdmin && selectedStudentId && (
+                <button
+                  onClick={returnToStudentDirectory}
+                  className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                >
+                  Back to Students
+                </button>
+              )}
               <div>
-                <h1 className="text-base font-semibold text-gray-900">
-                  Reflection Session
-                </h1>
-                {selectedSession && isAdmin && (
-                  <div className="mt-1">
-                    <StageProgressBar
-                      currentStage={selectedSession.current_stage}
-                      isCompleted={selectedSession.status === "COMPLETED"}
-                      turnCounts={turnCounts}
-                      compact
-                    />
-                  </div>
+                {isAdmin ? (
+                  <>
+                    <h1 className="text-base font-semibold text-gray-900">
+                      {!selectedStudentId
+                        ? "Admin Dashboard"
+                        : formatStudentLabel(selectedStudent)}
+                    </h1>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {!selectedStudentId
+                        ? "Browse students and open a conversation to inspect details."
+                        : selectedSession
+                          ? `Session on ${selectedSessionDate} | ${selectedSession.status} | ${formatStageLabel(selectedSession.current_stage)}`
+                          : `@${selectedStudent?.username || "unknown"} | ${selectedStudentSessions.length} conversation${selectedStudentSessions.length !== 1 ? "s" : ""} | latest ${selectedStudentLatestDate || "N/A"}`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-base font-semibold text-gray-900">
+                      Reflection Session
+                    </h1>
+                    {selectedSession && (
+                      <div className="mt-1">
+                        <StageProgressBar
+                          currentStage={selectedSession.current_stage}
+                          isCompleted={selectedSession.status === "COMPLETED"}
+                          turnCounts={turnCounts}
+                          compact
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-              {selectedSession && (
-                isAdmin && (
-                <button
-                  onClick={() =>
-                    router.push(`/dashboard/${selectedSession.id}/inspect`)
-                  }
-                  className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md hover:bg-purple-200 transition-colors"
-                >
-                  Inspect Full Session Details
-                </button>
-                )
-              )}
             </div>
+            {isAdmin && (
+              <button
+                onClick={logout}
+                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              >
+                Logout
+              </button>
+            )}
           </div>
         </header>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages">
-          {!selectedSession && (
+          {!isAdmin && <UnityAvatarPanel />}
+
+          {isAdmin && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+              <AdminMetricCard
+                label="Students With Sessions"
+                value={String(totalStudents)}
+              />
+              <AdminMetricCard
+                label="Completed Sessions"
+                value={String(completedSessions.length)}
+              />
+              <AdminMetricCard label="Completion Rate" value={completionRate} />
+              <AdminMetricCard
+                label="Average Evaluation"
+                value={averageScore === "N/A" ? averageScore : `${averageScore}/5`}
+              />
+            </div>
+          )}
+
+          {isAdmin && !selectedStudentId && (
+            <div className="space-y-6">
+              <div className="rounded-xl border border-gray-200 bg-white p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">
+                      Student Directory
+                    </p>
+                    <h2 className="mt-1 text-xl font-semibold text-gray-900">
+                      All Students
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Select a student to open their conversation history, evaluations, and raw JSON.
+                    </p>
+                  </div>
+                  <div className="flex w-full flex-col gap-2 lg:w-auto lg:min-w-[320px]">
+                    <input
+                      type="text"
+                      value={adminSearch}
+                      onChange={(e) => setAdminSearch(e.target.value)}
+                      placeholder="Search student, username, or stage"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as SessionStatusFilter)}
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="ALL">All statuses</option>
+                      <option value="ACTIVE">Active only</option>
+                      <option value="COMPLETED">Completed only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {filteredStudents.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center text-sm text-gray-500">
+                  No students match the current filters.
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredStudents.map((student) => {
+                    const sessionsForStudent = (studentSessionsMap[student.id] || []).sort(
+                      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+                    );
+                    const latestSession = sessionsForStudent[0];
+                    const activeCount = sessionsForStudent.filter((session) => session.status === "ACTIVE").length;
+                    const averageStudentScore =
+                      sessionsForStudent.filter((session) => getSessionScore(session) !== null).length > 0
+                        ? (
+                            sessionsForStudent.reduce(
+                              (sum, session) => sum + (getSessionScore(session) || 0),
+                              0
+                            ) /
+                            sessionsForStudent.filter((session) => getSessionScore(session) !== null).length
+                          ).toFixed(1)
+                        : null;
+
+                    return (
+                      <button
+                        key={student.id}
+                        onClick={() => handleSelectStudent(student.id)}
+                        className="rounded-2xl border border-gray-200 bg-white p-5 text-left transition-colors hover:border-blue-300 hover:bg-blue-50"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {formatStudentLabel(student)}
+                            </p>
+                            <p className="mt-1 text-sm text-gray-500">@{student.username}</p>
+                          </div>
+                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                            {sessionsForStudent.length} conversation{sessionsForStudent.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">Current Focus</p>
+                            <p className="mt-1 text-gray-700">
+                              {latestSession ? formatStageLabel(latestSession.current_stage) : "No sessions"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">Status</p>
+                            <p className="mt-1 text-gray-700">
+                              {activeCount > 0 ? `${activeCount} active` : "No active sessions"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">Latest Session</p>
+                            <p className="mt-1 text-gray-700">
+                              {latestSession
+                                ? new Date(latestSession.started_at).toLocaleDateString([], {
+                                    timeZone: "America/New_York",
+                                  })
+                                : "N/A"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-gray-50 p-3">
+                            <p className="text-[10px] uppercase tracking-wide text-gray-400">Average Eval</p>
+                            <p className="mt-1 text-gray-700">
+                              {averageStudentScore ? `${averageStudentScore}/5` : "No eval yet"}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!selectedSession && !isAdmin && (
             <div className="text-center text-gray-400 mt-16">
-              <p className="text-lg">Select a session or create a new one</p>
+              <p className="text-lg">
+                Select a session or create a new one
+              </p>
+            </div>
+          )}
+
+          {selectedSession && isAdmin && selectedStudentId && (
+            <div className="space-y-4 mb-6">
+              <p className="text-sm text-gray-500">
+                Viewing {selectedStudentSessions.length} conversation{selectedStudentSessions.length !== 1 ? "s" : ""} for {formatStudentLabel(selectedStudent)}.
+              </p>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">
+                      Conversations
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                      {formatStudentLabel(selectedStudent)}
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Select a conversation to inspect the full transcript and evaluation context.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                    {selectedStudentSessions.length} conversation{selectedStudentSessions.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {selectedStudentSessions.map((session) => {
+                    const score = getSessionScore(session);
+                    return (
+                      <button
+                        key={session.id}
+                        onClick={() => selectSession(session, true)}
+                        className={`rounded-xl border p-4 text-left transition-colors ${
+                          selectedSession.id === session.id
+                            ? "border-blue-300 bg-blue-50"
+                            : "border-gray-200 bg-white hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              session.status === "ACTIVE"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {session.status === "ACTIVE" ? "Active" : "Completed"}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {new Date(session.started_at).toLocaleDateString([], {
+                              timeZone: "America/New_York",
+                            })}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm font-medium text-gray-900">
+                          {formatStageLabel(session.current_stage)}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {session.model_name || "model unknown"} | {session.prompt_version || "prompt unknown"}
+                        </p>
+                        <div className="mt-3 flex items-center justify-between text-[10px] text-gray-500">
+                          <span>{session.id.slice(0, 8)}</span>
+                          <span>{score !== null ? `${score}/5 score` : "No evaluation yet"}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mx-auto flex max-w-6xl flex-col items-center gap-4">
+                <div className="w-full max-w-4xl rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-gray-400">
+                        Session Summary
+                      </p>
+                      <h2 className="mt-1 text-lg font-semibold text-gray-900">
+                        {formatStudentLabel(selectedStudent)}
+                      </h2>
+                      <p className="mt-1 text-sm text-gray-500">
+                        @{selectedStudent?.username || "unknown"} | {selectedSession.model_name || "model unknown"} | {selectedSession.prompt_version || "prompt unknown"}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          selectedSession.status === "COMPLETED"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {selectedSession.status}
+                      </span>
+                      <button
+                        onClick={() =>
+                          router.push(`/dashboard/${selectedSession.id}/inspect`)
+                        }
+                        className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md hover:bg-purple-200 transition-colors"
+                      >
+                        Inspect Full Session Details
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <StageProgressBar
+                      currentStage={selectedSession.current_stage}
+                      isCompleted={selectedSession.status === "COMPLETED"}
+                      turnCounts={turnCounts}
+                    />
+                  </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Started</p>
+                    <p className="mt-1 text-gray-700">
+                      {new Date(selectedSession.started_at).toLocaleString([], { timeZone: "America/New_York" })}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Completed</p>
+                    <p className="mt-1 text-gray-700">
+                      {selectedSession.completed_at
+                        ? new Date(selectedSession.completed_at).toLocaleString([], { timeZone: "America/New_York" })
+                        : "Still active"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Messages</p>
+                    <p className="mt-1 text-gray-700">{messages.length}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400">Latest Student Note</p>
+                    <p className="mt-1 text-gray-700 line-clamp-2">
+                      {latestStudentMessage?.content || "No student message yet"}
+                    </p>
+                  </div>
+                </div>
+
+                </div>
+
+                <div className="w-full max-w-4xl space-y-4">
+                  {selectedSession.evaluation_data && (
+                    <JsonPanel title="Evaluation JSON" data={selectedSession.evaluation_data} />
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -573,8 +1194,12 @@ export default function DashboardPage() {
 
           {selectedSession && !isLoadingMessages && messages.length === 0 && (
             <div className="text-center text-gray-400 mt-8">
-              <p className="text-lg">Start the conversation!</p>
-              <p className="text-sm mt-1">Type a message below to begin reflecting.</p>
+              <p className="text-lg">
+                {isAdmin ? "No messages in this session yet." : "Start the conversation!"}
+              </p>
+              {!isAdmin && (
+                <p className="text-sm mt-1">Type a message below to begin reflecting.</p>
+              )}
             </div>
           )}
 
@@ -612,7 +1237,25 @@ export default function DashboardPage() {
 
         {/* Input */}
         <div className="bg-white border-t border-gray-200 p-4">
-          {selectedSession?.status === "COMPLETED" ? (
+          {isAdmin ? (
+            selectedStudentId && selectedSession ? (
+              <div className="flex items-center justify-between gap-3 text-sm text-gray-500">
+                <span>
+                  Admin review mode is read-only here. Open the full inspector for stage registry details, richer metadata, and deeper raw JSON views.
+                </span>
+                <button
+                  onClick={() => router.push(`/dashboard/${selectedSession.id}/inspect`)}
+                  className="rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-200"
+                >
+                  Inspect Session
+                </button>
+              </div>
+            ) : (
+              <div className="text-center text-sm text-gray-500 py-2">
+                Select a student to open their conversations, then choose a session to review.
+              </div>
+            )
+          ) : selectedSession?.status === "COMPLETED" ? (
             <div className="text-center text-sm text-gray-500 py-2">
               Session completed.{" "}
               <button

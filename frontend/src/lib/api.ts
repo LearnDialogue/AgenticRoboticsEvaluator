@@ -95,6 +95,10 @@ export const stagesApi = {
 
 // Admin API
 export const adminApi = {
+  listStudents: async () => {
+    const response = await api.get("/admin/students");
+    return response.data;
+  },
   listSessions: async (page = 1, pageSize = 50) => {
     const response = await api.get("/admin/sessions", {
       params: { page, page_size: pageSize },
