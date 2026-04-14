@@ -6,6 +6,22 @@ import { useAuth } from "@/lib/auth-context";
 import { sessionsApi, stagesApi } from "@/lib/api";
 import MessageCard from "@/components/MessageCard";
 import StageProgressBar from "@/components/StageProgressBar";
+import UnityAvatarPanel from "@/components/UnityAvatarPanel";
+
+function sendAvatarState(state: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendState(state);
+}
+
+function sendAvatarUserMessage(message: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendUserMessage(message);
+}
+
+function sendAvatarAssistantMessage(message: string) {
+  if (typeof window === "undefined") return;
+  window.unityAvatarBridge?.sendAssistantMessage(message);
+}
 
 interface Message {
   id: string;
@@ -364,6 +380,8 @@ export default function DashboardPage() {
     const content = input.trim();
     setInput("");
     setIsSending(true);
+    sendAvatarUserMessage(content);
+    sendAvatarState("thinking");
 
     try {
       const response = await sessionsApi.chat(selectedSession.id, content);
@@ -389,6 +407,8 @@ export default function DashboardPage() {
             : s
         )
       );
+      sendAvatarAssistantMessage(response.assistant_message.content);
+      sendAvatarState("listening");
       // If session just completed, re-fetch to get evaluation_data
       if (response.session_status === "COMPLETED") {
         try {
@@ -403,6 +423,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+      sendAvatarState("idle");
     } finally {
       setIsSending(false);
     }
@@ -561,6 +582,8 @@ export default function DashboardPage() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 chat-messages">
+          {!isAdmin && <UnityAvatarPanel />}
+
           {!selectedSession && (
             <div className="text-center text-gray-400 mt-16">
               <p className="text-lg">Select a session or create a new one</p>
