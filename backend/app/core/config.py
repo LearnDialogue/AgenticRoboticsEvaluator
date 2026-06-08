@@ -2,6 +2,7 @@
 Application configuration using Pydantic settings.
 """
 
+# pyrefly: ignore [missing-import]
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -26,6 +27,10 @@ class Settings(BaseSettings):
     # LLM Behaviour
     LLM_MAX_RETRIES: int = 2          # retry on bad JSON
     LLM_STAGE_MAX_TURNS: int = 5      # safety-valve: force-advance after N turns
+
+    # Session Time Limits
+    SESSION_TIME_LIMIT_SECONDS: int = 600     # 10 minutes total
+    SESSION_WRAP_UP_THRESHOLD: float = 0.7    # start time-aware hints at 70% of limit
 
     # App Settings
     DEBUG: bool = False

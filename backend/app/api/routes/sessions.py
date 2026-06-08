@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import func
 
@@ -33,7 +34,7 @@ def create_session(
     session = ChatSession(
         student_id=current_user.id,
         status=SessionStatus.ACTIVE,
-        current_stage="greeting",
+        current_stage="welcome",
         prompt_version="v1.0",
         model_name=settings.LLM_MODEL,
     )
@@ -169,7 +170,7 @@ async def initiate_session(
 
     # Process with FlowEngine — no user input
     llm_client = get_llm_client()
-    engine = FlowEngine(session, [], current_user, llm_client)
+    engine = FlowEngine(session, [], current_user, llm_client, db=db)
     response_content, new_stage, is_complete, llm_metadata = await engine.process()
 
     # Save only the assistant message
@@ -244,7 +245,7 @@ async def chat(
 
     # Process with FlowEngine
     llm_client = get_llm_client()
-    engine = FlowEngine(session, history, current_user, llm_client)
+    engine = FlowEngine(session, history, current_user, llm_client, db=db)
     response_content, new_stage, is_complete, llm_metadata = await engine.process(request.content)
 
     # Save assistant message

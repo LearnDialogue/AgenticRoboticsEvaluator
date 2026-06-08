@@ -1,6 +1,6 @@
-# Agentic Robotics Evaluator
+# Collaborative Reflection Agent
 
-A conversational AI agent designed to help robotics students reflect on their learning through Socratic questioning and guided dialogue. The agent guides students through structured reflection sessions, helping them articulate challenges, explore solutions, and plan next steps.
+A conversational AI agent designed to guide high school robotics students through metacognitive reflection on their **teamwork experience**. Grounded in Kolb's Experiential Learning Theory (ELT) and the Collaborative Problem Solving (CPS) framework, the agent helps students recall team experiences, observe dynamics, make meaning, and plan experiments — all in a 10-minute session.
 
 ---
 
@@ -38,20 +38,22 @@ open http://localhost:3000
 ## Project Overview
 
 ### The Problem
-Robotics students benefit from reflecting on their projects, but coaches have limited time for 1:1 conversations. Students need a supportive "near-peer" they can talk to weekly after team meetings.
+High school robotics students benefit from reflecting on their **teamwork**, but coaches have limited time for 1:1 conversations. Students need a supportive "near-peer" they can talk to weekly after team meetings — one that focuses on *how the team worked together*, not just the robot.
 
 ### The Solution
 A chat-based AI agent that:
-- Guides students through a **7-stage reflection protocol**
-- Uses **Socratic questioning** (asks questions rather than giving answers)
-- Maintains **conversation history** across sessions
-- Includes **safety monitoring** for concerning content (planned)
-- Provides **session summaries** for coaches to review (planned)
+- Guides students through a **6-stage ELT reflection protocol** focused on teamwork
+- Uses **Socratic questioning** with an acknowledge-and-pivot strategy for robot talk
+- Probes for **CPS framework** indicators during the observe_dynamics stage
+- Maintains **cross-session memory** via evaluation profiles (passive, student-initiated)
+- Produces **structured evaluations** with ELT quality assessment and CPS analysis
+- Enforces **10-minute time-bounded sessions** with graceful wrap-up
 
 ### Design Principles
-- **Near-peer tone**: Friendly and supportive, not authoritative
-- **Student-driven**: The student leads the conversation
-- **Scaffolded reflection**: Structured stages ensure meaningful dialogue
+- **Near-peer tone**: Like a slightly older student, not a teacher or coach
+- **Teamwork-focused**: The robot is context; the team is the subject
+- **Hybrid transitions**: LLM recommends, FlowEngine decides (deterministic guardrails)
+- **Research-friendly**: Full audit trail with transition decisions, CPS indicators, and ELT assessment
 - **Privacy-conscious**: Minimal data collection, clear boundaries
 
 ---
@@ -68,16 +70,21 @@ The core system is fully functional with LLM integration, a dashboard UI, and po
 | API | Complete | All CRUD endpoints for sessions, messages, users |
 | LLM Integration | Complete | Llama 3.3 70B via UF Navigator, JSON mode, retry logic, structured responses |
 | Dashboard UI | Complete | Session sidebar, chat, stage progress, metadata display |
-| Post-Session Eval | Complete | Automated scoring, student profiling, recommendations |
+| Post-Session Eval | Complete | ELT assessment, student profiling, CPS analysis, recommendations |
+| CPS Framework | Complete | Database-driven indicators, admin API, dynamic prompt injection |
+| Hybrid Transitions | Complete | Min/max turns, required signal heuristics, LLM override capability |
+| Cross-Session Memory | Complete | Passive memory from evaluation profiles, student-initiated only |
+| Time-Bounded Sessions | Complete | 10-minute limit with graceful wrap-up at 70% threshold |
 | Safety Monitoring | Planned | Database table exists, detection logic not yet implemented |
 
 **What you can do right now:**
 1. Log in as admin or student
-2. Start a chat session and have a real conversation with the AI tutor
-3. Watch the agent progress through 7 reflection stages automatically
-4. View LLM metadata and routing decisions on each message
-5. See a full evaluation when the session completes
-6. Inspect any session with detailed metadata on the inspect page
+2. Start a chat session and have a real conversation focused on teamwork
+3. Watch the agent progress through 6 ELT-mapped reflection stages
+4. View hybrid transition decisions and CPS indicators in message metadata
+5. See a full evaluation with ELT quality assessment when the session completes
+6. Manage CPS indicators via the admin API
+7. Inspect any session with detailed metadata on the inspect page
 
 ---
 
@@ -117,7 +124,7 @@ The core system is fully functional with LLM integration, a dashboard UI, and po
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │                   SQLAlchemy Models                           │   │
 │  │  Student │ Session │ Message │ SessionSummary │ SafetyIncident│   │
-│  │                                                               │   │
+│  │                     │ CPSIndicator                              │   │
 │  │  JSONB columns: messages.llm_metadata, sessions.evaluation_data│   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └────────────────────────────┼────────────────────────────────────────┘
@@ -301,24 +308,28 @@ AgenticRoboticsEvaluator/
 
 ### FlowEngine
 
-Located in `backend/app/services/flow_engine.py`. This orchestrates each turn of conversation:
+Located in `backend/app/services/flow_engine.py`. This orchestrates each turn of conversation with **hybrid transition logic**:
 
-1. Loads the full conversation history for the session
-2. Builds a system prompt from the Prompt Registry using the current stage config
-3. Calls the LLM client to get a response
-4. Validates the JSON response and extracts the student-facing text
-5. Checks the routing signal and advances to the next stage if needed
+1. Loads CPS indicators (for observe_dynamics) and cross-session memory
+2. Checks time limits — force-jumps to wrap_up if over budget
+3. Builds a system prompt from the Prompt Registry using the current stage config
+4. Calls the LLM client to get a response
+5. Runs the **hybrid transition decision** — the LLM recommends, the engine decides:
+   - Never advance before `min_turns`
+   - Always advance after `max_turns`
+   - Required signal heuristics can override LLM's "NEXT" recommendation
+6. Logs a full `transition_decision` audit trail in llm_metadata
 
 ### Prompt Registry
 
-Located in `backend/app/core/prompts.py`. This is the single source of truth for all LLM instructions. It contains:
+Located in `backend/app/core/prompts.py`. Single source of truth for all LLM instructions:
 
-- The agent persona and behavioral guidelines
-- The JSON response format the LLM must follow
-- The STAGE_REGISTRY dictionary with all 7 stages
-- The post-session evaluation prompt
-
-Each stage in STAGE_REGISTRY has a goal, system prompt, completion criteria, and max turn count.
+- **SYSTEM_PREAMBLE**: Teamwork-focused near-peer persona for high school students
+- **RESPONSE_FORMAT_INSTRUCTION**: JSON contract with CPS-aware reflection_data
+- **STAGE_REGISTRY**: 6 ELT-mapped stages with min/max turns and required signals
+- **SESSION_EVALUATION_PROMPT**: ELT quality assessment + CPS complaint analysis
+- **build_cps_context()**: Dynamic CPS indicator injection from database
+- **build_system_prompt()**: Assembles persona + stage + CPS + memory + format
 
 ### LLM Client
 
@@ -334,20 +345,21 @@ Located in `backend/app/services/llm_client.py`. Wraps LLM API calls (via UF Nav
 Located in `backend/app/services/session_evaluator.py`. Runs one LLM call after a session completes to produce:
 
 - Overall quality score with justification
-- Student profile with personal details, communication style, and memory hooks
-- Tutor performance analysis
+- **ELT assessment**: Quality rating for each phase of Kolb's cycle
+- Student profile with teamwork patterns, communication style, and memory hooks
+- **CPS complaint analysis**: Maps student observations to CPS framework indicators
+- Tutor performance analysis (including teamwork focus and acknowledge-and-pivot quality)
 - Recommendations for future sessions
 
-### The 7 Conversation Stages
+### The 6 Conversation Stages (ELT-Mapped)
 
 ```
-1. greeting            - Build rapport, learn student's name
-2. context_gathering   - Understand what they're working on
-3. problem_exploration - Dig into specific challenges
-4. guided_reflection   - Socratic questioning
-5. solution_brainstorm - Explore solutions without giving answers
-6. action_planning     - Commit to next steps
-7. wrap_up             - Summarize and close
+1. welcome             — Build rapport, learn who they are
+2. recall_experience   — Concrete Experience: what happened in the team meeting
+3. observe_dynamics    — Reflective Observation: what team dynamics they noticed (+ CPS probing)
+4. make_meaning        — Abstract Conceptualization: why those dynamics occurred
+5. plan_experiment     — Active Experimentation: what they'll try differently next meeting
+6. wrap_up             — Summarize through ELT lens and close
 ```
 
 ### Authentication Flow
@@ -367,7 +379,8 @@ Located in `backend/app/services/session_evaluator.py`. Runs one LLM call after 
 | Student | students | Users, both students and admins | Used |
 | Session | sessions | Chat session with stage tracking and evaluation_data | Used |
 | Message | messages | Individual messages with llm_metadata | Used |
-| SessionSummary | session_summaries | Structured extraction from sessions | Not used yet |
+| CPSIndicator | cps_indicators | CPS framework behavioral indicators | Used |
+| SessionSummary | session_summaries | ELT-enriched structured extraction | Not used yet |
 | SafetyIncident | safety_incidents | Flagged concerning messages | Not used yet |
 
 ---
@@ -376,15 +389,15 @@ Located in `backend/app/services/session_evaluator.py`. Runs one LLM call after 
 
 These are the logical next steps:
 
-1. **Safety monitoring** - Run a parallel check on each student message to detect concerning content. The database table exists, needs detection logic.
+1. **Safety monitoring** — Run a parallel check on each student message to detect concerning content. The database table exists, needs detection logic.
 
-2. **Session summaries** - Auto-generate a coach-readable summary after each session. The table exists, needs a second post-session LLM call.
+2. **Session summaries** — Auto-generate a coach-readable summary after each session. The table exists with ELT columns, needs a second post-session LLM call.
 
-3. **Cross-session memory** - Use the student profile from evaluation to seed future sessions so the agent remembers the student.
+3. **Admin dashboard** — Build a proper admin interface for viewing all sessions, managing CPS indicators visually, and reading evaluations.
 
-4. **Admin dashboard** - Build a proper admin interface for viewing all sessions, reading evaluations, and managing users.
+4. **CPS indicator analytics** — Aggregate CPS observations across sessions to identify team-level patterns.
 
-5. **Multi-model support** - Add Claude or other providers. The LLM client already accepts a model parameter.
+5. **Multi-model support** — Add Claude or other providers. The LLM client already accepts a model parameter.
 
 ---
 

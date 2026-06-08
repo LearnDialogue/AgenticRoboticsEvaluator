@@ -4,6 +4,7 @@ from app.models.session import Session
 from app.models.message import Message
 from app.models.session_summary import SessionSummary
 from app.models.safety_incident import SafetyIncident
+from app.models.cps_indicator import CPSIndicator
 
 __all__ = [
     "Student",
@@ -11,4 +12,5 @@ __all__ = [
     "Message",
     "SessionSummary",
     "SafetyIncident",
+    "CPSIndicator",
 ]

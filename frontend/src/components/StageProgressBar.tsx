@@ -3,29 +3,27 @@
 import React from "react";
 
 const STAGE_LABELS: Record<string, string> = {
-  greeting: "Greeting",
-  context_gathering: "Context",
-  problem_exploration: "Problems",
-  guided_reflection: "Reflection",
-  solution_brainstorm: "Solutions",
-  action_planning: "Planning",
+  welcome: "Welcome",
+  recall_experience: "Experience",
+  observe_dynamics: "Dynamics",
+  make_meaning: "Meaning",
+  plan_experiment: "Experiment",
   wrap_up: "Wrap Up",
 };
 
 const STAGE_ORDER = [
-  "greeting",
-  "context_gathering",
-  "problem_exploration",
-  "guided_reflection",
-  "solution_brainstorm",
-  "action_planning",
+  "welcome",
+  "recall_experience",
+  "observe_dynamics",
+  "make_meaning",
+  "plan_experiment",
   "wrap_up",
 ];
 
 interface StageProgressBarProps {
   currentStage: string;
   isCompleted: boolean;
-  /** Turn counts per stage, e.g. { greeting: 2, context_gathering: 4 } */
+  /** Turn counts per stage, e.g. { welcome: 2, recall_experience: 4 } */
   turnCounts?: Record<string, number>;
   compact?: boolean;
 }
@@ -89,9 +87,10 @@ export default function StageProgressBar({
         <p className="text-xs text-gray-500 mt-1">
           {isCompleted
             ? "Completed"
-            : `Stage ${currentIdx + 1}/7 — ${STAGE_LABELS[currentStage] || currentStage}`}
+            : `Stage ${currentIdx + 1}/6 — ${STAGE_LABELS[currentStage] || currentStage}`}
         </p>
       )}
     </div>
   );
 }
+
